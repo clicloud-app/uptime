@@ -1,0 +1,40 @@
+# Checks clicloud every 5 minutes (check.sh, targets.txt). When something goes down it opens an
+# issue labelled "outage" (GitHub emails you and pushes to the GitHub app), and closes it with a
+# note when everything is back. While it's down it adds nothing more, so you get one alert per outage.
+# Put this in a public repo: Actions minutes are free there (a private repo would use ~9,000 a month).
+name: uptime
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency: { group: uptime, cancel-in-progress: false }
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: check
+        run: |
+          set +e
+          bash check.sh | tee result.txt
+          echo "down=$([ -s down.txt ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - run: cat result.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Open or close the outage issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOWN: ${{ steps.check.outputs.down }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create outage --color B60205 --description "clicloud is down" 2>/dev/null || true
+          open="$(gh issue list --label outage --state open --json number --jq '.[0].number // empty')"
+          now="$(date -u '+%Y-%m-%d %H:%M UTC')"
+          if [ "$DOWN" = "true" ] && [ -z "$open" ]; then
+            { echo "Down since $now:"; echo; cat down.txt; echo; echo "[Check run]($RUN_URL)"; } > body.md
+            gh issue create --title "clicloud down: $(sed -E 's/^- \*\*([^*]+)\*\*.*/\1/' down.txt | paste -sd, - | sed 's/,/, /g')" --label outage --body-file body.md
+          elif [ "$DOWN" != "true" ] && [ -n "$open" ]; then
+            gh issue close "$open" --comment "Back up at $now. [Check run]($RUN_URL)"
+          fi

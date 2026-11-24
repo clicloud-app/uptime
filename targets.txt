@@ -1,0 +1,7 @@
+# name|url|expected status|text the body must contain (optional)
+API|https://api.clicloud.app/health|200|"ok":true
+Connector sign-in|https://api.clicloud.app/.well-known/oauth-authorization-server|200|authorization_endpoint
+Dashboard|https://app.clicloud.app/|200|
+Website|https://clicloud.app/|200|
+# One app on the worker proves *.clicloud.dev is serving. Uncomment and use an app that's always on:
+# Worker|https://your-app.clicloud.dev/|200|
